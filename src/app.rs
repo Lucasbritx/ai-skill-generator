@@ -468,6 +468,35 @@ Enhanced skill:"#,
         self.skill.output = output;
         self.skill.constraints = constraints;
         self.skill.tags = tags;
+
+        self.populate_textareas_from_skill();
+    }
+
+    /// Populate textareas from skill data (after AI enhancement)
+    pub fn populate_textareas_from_skill(&mut self) {
+        // Create new textareas with skill data
+        let ta_name = TextArea::new(vec![self.skill.name.clone()]);
+        let ta_desc = TextArea::new(vec![self.skill.description.clone()]);
+        let ta_context = TextArea::new(self.skill.context.clone());
+        
+        let input_text: Vec<String> = self.skill.inputs
+            .iter()
+            .map(|i| {
+                if i.description.is_empty() {
+                    i.name.clone()
+                } else {
+                    format!("{}: {}", i.name, i.description)
+                }
+            })
+            .collect();
+        let ta_inputs = TextArea::new(input_text);
+        
+        let ta_steps = TextArea::new(self.skill.steps.clone());
+        let ta_output = TextArea::new(vec![self.skill.output.clone()]);
+        let ta_constraints = TextArea::new(self.skill.constraints.clone());
+        let ta_tags = TextArea::new(vec![self.skill.tags.join(" ")]);
+
+        self.text_areas = vec![ta_name, ta_desc, ta_context, ta_inputs, ta_steps, ta_output, ta_constraints, ta_tags];
     }
 
     /// Get progress percentage
