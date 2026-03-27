@@ -145,6 +145,24 @@ mod tests {
     }
 
     #[test]
+    fn test_kebab_case_with_spaces() {
+        let skill = Skill {
+            name: "AI Skill Generator".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(skill.kebab_case_name(), "ai-skill-generator");
+    }
+
+    #[test]
+    fn test_kebab_case_with_special_chars() {
+        let skill = Skill {
+            name: "React/TypeScript Form Builder".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(skill.kebab_case_name(), "react-typescript-form-builder");
+    }
+
+    #[test]
     fn test_to_markdown() {
         let skill = Skill {
             name: "Test Skill".to_string(),
@@ -164,5 +182,68 @@ mod tests {
         assert!(md.contains("## Skill: test-skill"));
         assert!(md.contains("### Description"));
         assert!(md.contains("A test skill"));
+    }
+
+    #[test]
+    fn test_to_markdown_empty_fields() {
+        let skill = Skill {
+            name: "Test".to_string(),
+            description: "A test".to_string(),
+            ..Default::default()
+        };
+
+        let md = skill.to_markdown();
+        assert!(md.contains("## Skill: test"));
+        assert!(md.contains("### Description"));
+        assert!(!md.contains("### Context"));
+        assert!(!md.contains("### Inputs"));
+    }
+
+    #[test]
+    fn test_to_markdown_with_markdown_description() {
+        let skill = Skill {
+            name: "Test Skill".to_string(),
+            description: "A **bold** test skill".to_string(),
+            ..Default::default()
+        };
+
+        let md = skill.to_markdown();
+        assert!(md.contains("A **bold** test skill"));
+    }
+
+    #[test]
+    fn test_is_valid() {
+        let skill = Skill {
+            name: "Test".to_string(),
+            description: "Description".to_string(),
+            ..Default::default()
+        };
+        assert!(skill.is_valid());
+    }
+
+    #[test]
+    fn test_is_valid_empty_name() {
+        let skill = Skill {
+            name: "".to_string(),
+            description: "Description".to_string(),
+            ..Default::default()
+        };
+        assert!(!skill.is_valid());
+    }
+
+    #[test]
+    fn test_is_valid_empty_description() {
+        let skill = Skill {
+            name: "Test".to_string(),
+            description: "".to_string(),
+            ..Default::default()
+        };
+        assert!(!skill.is_valid());
+    }
+
+    #[test]
+    fn test_is_valid_both_empty() {
+        let skill: Skill = Skill::default();
+        assert!(!skill.is_valid());
     }
 }

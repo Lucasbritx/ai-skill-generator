@@ -14,6 +14,7 @@ A beautiful TUI (Terminal User Interface) application built with [Ratatui](https
 - **Keyboard Navigation**: Intuitive keyboard shortcuts
 - **Auto-formatting**: Automatic kebab-case naming and tag formatting
 - **Instant Save**: Export to Markdown file with Ctrl+S
+- **AI Enhancement**: Improve skills with OpenCode AI using Ctrl+E
 
 ## Installation
 

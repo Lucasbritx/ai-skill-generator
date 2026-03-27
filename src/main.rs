@@ -3,7 +3,7 @@ mod events;
 mod skill;
 mod ui;
 
-use std::io::stdout;
+use std::io::{stdout, Write};
 
 use color_eyre::Result;
 use crossterm::{
@@ -15,37 +15,31 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use app::App;
 
 fn main() -> Result<()> {
-    // Initialize error handling
     color_eyre::install()?;
 
-    // Setup terminal
-    enable_raw_mode()?;
-    let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    let stdout = stdout();
     let backend = CrosstermBackend::new(stdout);
+
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app and run
+    enable_raw_mode()?;
+    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+
     let mut app = App::new();
     let result = run_app(&mut terminal, &mut app);
 
-    // Restore terminal
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    let _ = std::io::stdout().flush();
 
-    // Handle any errors
     if let Err(e) = result {
         eprintln!("Error: {}", e);
-        return Err(e);
     }
 
-    // Print farewell message
     if app.saved {
-        println!("\n✅ Skill saved successfully!");
-        println!("   File: {}.md", app.skill.kebab_case_name());
+        println!("\n✅ Skill saved: {}.md", app.skill.kebab_case_name());
     } else {
-        println!("\n👋 Thanks for using AI Skill Generator!");
+        println!("\n👋 Goodbye!");
     }
 
     Ok(())
@@ -53,15 +47,12 @@ fn main() -> Result<()> {
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
     loop {
-        // Draw UI
         terminal.draw(|frame| {
             ui::render(app, frame);
         })?;
 
-        // Handle events
         events::handle_events(app)?;
 
-        // Check for quit
         if app.should_quit {
             break;
         }

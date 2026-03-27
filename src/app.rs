@@ -286,6 +286,190 @@ impl<'a> App<'a> {
         Ok(filename)
     }
 
+    /// Enhance skill using OpenCode AI CLI
+    pub fn enhance_with_ai(&mut self) -> color_eyre::Result<String> {
+        self.sync_skill_from_textarea();
+
+        if !self.skill.is_valid() {
+            return Err(color_eyre::eyre::eyre!(
+                "Skill must have at least a name and description"
+            ));
+        }
+
+        let prompt = format!(
+            r#"You are an AI skill enhancement engine. Enhance the following skill by improving clarity, adding missing details, making steps more actionable, and ensuring best practices for LLM-based systems.
+
+Output ONLY the enhanced skill in exact same Markdown format. Do NOT ask questions. Do NOT include explanations. Just output the enhanced skill.
+
+---
+
+{}
+
+---
+
+Enhanced skill:"#,
+            self.skill.to_markdown()
+        );
+
+        self.status_message = Some("🤖 Enhancing with AI...".to_string());
+
+        let output = std::process::Command::new("/Users/lucasxavier/.opencode/bin/opencode")
+            .arg("run")
+            .arg("--thinking")
+            .arg(&prompt)
+            .output()?;
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let combined = format!("{}\n{}", stderr, stdout);
+        
+        let enhanced = Self::extract_skill_from_output(&combined);
+
+        if enhanced.trim().is_empty() {
+            return Err(color_eyre::eyre::eyre!("No response from AI"));
+        }
+
+        self.status_message = Some("✨ Skill enhanced!".to_string());
+
+        Ok(enhanced.to_string())
+    }
+
+    /// Extract skill content from AI output
+    fn extract_skill_from_output(output: &str) -> String {
+        let lines: Vec<&str> = output.lines().collect();
+        let mut in_skill = false;
+        let mut skill_lines = Vec::new();
+
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("## Skill:") {
+                if in_skill && !skill_lines.is_empty() {
+                    break;
+                }
+                in_skill = true;
+            }
+            
+            if in_skill {
+                skill_lines.push(line);
+            }
+        }
+
+        skill_lines.join("\n")
+    }
+
+    /// Parse enhanced skill from AI response
+    pub fn parse_enhanced_skill(&mut self, enhanced: &str) {
+        let lines: Vec<&str> = enhanced.lines().collect();
+        let mut current_section = None;
+        let mut name = String::new();
+        let mut description = String::new();
+        let mut context = Vec::new();
+        let mut inputs = Vec::new();
+        let mut steps = Vec::new();
+        let mut output = String::new();
+        let mut constraints = Vec::new();
+        let mut tags = Vec::new();
+
+        for line in &lines {
+            let trimmed = line.trim();
+            if trimmed.starts_with("## Skill:") {
+                name = trimmed.trim_start_matches("## Skill:").trim().to_string();
+            } else if trimmed == "### Description" {
+                current_section = Some("description");
+            } else if trimmed == "### Context" {
+                current_section = Some("context");
+            } else if trimmed == "### Inputs" {
+                current_section = Some("inputs");
+            } else if trimmed == "### Steps" {
+                current_section = Some("steps");
+            } else if trimmed == "### Output" {
+                current_section = Some("output");
+            } else if trimmed == "### Constraints" {
+                current_section = Some("constraints");
+            } else if trimmed == "### Tags" {
+                current_section = Some("tags");
+            } else if trimmed.starts_with("### ") {
+                current_section = None;
+            } else if let Some(section) = current_section {
+                match section {
+                    "description" => {
+                        if !trimmed.is_empty() {
+                            if !description.is_empty() {
+                                description.push('\n');
+                            }
+                            description.push_str(trimmed);
+                        }
+                    }
+                    "context" => {
+                        if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                            context.push(trimmed.trim_start_matches('-').trim_start_matches('*').trim().to_string());
+                        }
+                    }
+                    "inputs" => {
+                        if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                            let input_str = trimmed.trim_start_matches('-').trim_start_matches('*').trim();
+                            if let Some((n, d)) = input_str.split_once(':') {
+                                inputs.push(Input {
+                                    name: n.trim().trim_matches('*').to_string(),
+                                    description: d.trim().to_string(),
+                                });
+                            } else {
+                                inputs.push(Input {
+                                    name: input_str.trim_matches('*').to_string(),
+                                    description: String::new(),
+                                });
+                            }
+                        }
+                    }
+                    "steps" => {
+                        if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) || trimmed.starts_with('-') {
+                            let step = trimmed
+                                .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ')' || c == '-')
+                                .trim()
+                                .to_string();
+                            if !step.is_empty() {
+                                steps.push(step);
+                            }
+                        }
+                    }
+                    "output" => {
+                        if !trimmed.is_empty() {
+                            if !output.is_empty() {
+                                output.push('\n');
+                            }
+                            output.push_str(trimmed);
+                        }
+                    }
+                    "constraints" => {
+                        if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                            constraints.push(trimmed.trim_start_matches('-').trim_start_matches('*').trim().to_string());
+                        }
+                    }
+                    "tags" => {
+                        for tag in trimmed.split_whitespace() {
+                            let tag = tag.trim_start_matches('#');
+                            if !tag.is_empty() {
+                                tags.push(tag.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        self.skill.name = name;
+        self.skill.description = description;
+        self.skill.context = context;
+        self.skill.inputs = inputs;
+        self.skill.steps = steps;
+        self.skill.output = output;
+        self.skill.constraints = constraints;
+        self.skill.tags = tags;
+    }
+
     /// Get progress percentage
     pub fn progress(&self) -> f64 {
         let total = FormSection::all().len() as f64;
@@ -297,5 +481,94 @@ impl<'a> App<'a> {
 impl Default for App<'_> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_form_section_navigation() {
+        assert_eq!(FormSection::Name.next(), Some(FormSection::Description));
+        assert_eq!(FormSection::Description.prev(), Some(FormSection::Name));
+        assert_eq!(FormSection::Preview.next(), None);
+        assert_eq!(FormSection::Name.prev(), None);
+    }
+
+    #[test]
+    fn test_form_section_titles() {
+        assert_eq!(FormSection::Name.title(), "Skill Name");
+        assert_eq!(FormSection::Description.title(), "Description");
+        assert_eq!(FormSection::Preview.title(), "Preview & Save");
+    }
+
+    #[test]
+    fn test_form_section_index() {
+        assert_eq!(FormSection::Name.index(), 0);
+        assert_eq!(FormSection::Description.index(), 1);
+        assert_eq!(FormSection::Preview.index(), 8);
+    }
+
+    #[test]
+    fn test_form_section_all() {
+        let all = FormSection::all();
+        assert_eq!(all.len(), 9);
+        assert_eq!(all[0], FormSection::Name);
+        assert_eq!(all[8], FormSection::Preview);
+    }
+
+    #[test]
+    fn test_app_new() {
+        let app = App::new();
+        assert_eq!(app.current_section, FormSection::Name);
+        assert_eq!(app.text_areas.len(), 8);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn test_app_progress() {
+        let app = App::new();
+        let progress = app.progress();
+        assert!((progress - 1.0 / 9.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_extract_skill_from_output() {
+        let output = r#"Some thinking text
+## Skill: test-skill
+
+### Description
+
+A test skill
+
+### Context
+
+- Rust
+
+### Tags
+
+#test
+more text"#;
+
+        let skill = App::extract_skill_from_output(output);
+        assert!(skill.starts_with("## Skill: test-skill"));
+        assert!(skill.contains("### Description"));
+        assert!(skill.contains("A test skill"));
+    }
+
+    #[test]
+    fn test_extract_skill_with_duplicates() {
+        let output = r#"## Skill: test
+
+First skill content
+
+## Skill: test
+
+Second skill content"#;
+
+        let skill = App::extract_skill_from_output(output);
+        assert!(skill.contains("First skill content"));
+        assert!(!skill.contains("Second skill content"));
     }
 }
