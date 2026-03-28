@@ -1,5 +1,13 @@
 use crate::skill::{Input, Skill};
+use std::sync::mpsc::Receiver;
 use tui_textarea::TextArea;
+
+/// Enum representing AI tasks to be run
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AITask {
+    Enhance,
+    FillEmpty,
+}
 
 /// Enum representing the different form sections/steps
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,14 +40,24 @@ impl FormSection {
 
     pub fn help_text(&self) -> &'static str {
         match self {
-            FormSection::Name => "Enter a descriptive name for your skill (will be converted to kebab-case)",
-            FormSection::Description => "Provide a clear and concise explanation of what the skill does",
-            FormSection::Context => "List technologies, frameworks, or environment assumptions (one per line)",
-            FormSection::Inputs => "Define input parameters (format: name: description, one per line)",
+            FormSection::Name => {
+                "Enter a descriptive name for your skill (will be converted to kebab-case)"
+            }
+            FormSection::Description => {
+                "Provide a clear and concise explanation of what the skill does"
+            }
+            FormSection::Context => {
+                "List technologies, frameworks, or environment assumptions (one per line)"
+            }
+            FormSection::Inputs => {
+                "Define input parameters (format: name: description, one per line)"
+            }
             FormSection::Steps => "List actionable steps to accomplish the skill (one per line)",
             FormSection::Output => "Describe what the skill produces",
             FormSection::Constraints => "List any limitations or requirements (one per line)",
-            FormSection::Tags => "Add tags for categorization (space or comma separated, # optional)",
+            FormSection::Tags => {
+                "Add tags for categorization (space or comma separated, # optional)"
+            }
             FormSection::Preview => "Review your skill and save it",
         }
     }
@@ -119,6 +137,14 @@ pub struct App<'a> {
     pub preview_scroll: u16,
     /// Whether save was successful
     pub saved: bool,
+    /// Whether AI is loading/processing
+    pub is_loading: bool,
+    /// Loading message
+    pub loading_message: Option<String>,
+    /// Pending AI task to run
+    pub pending_ai_task: Option<AITask>,
+    /// Receiver for AI task results
+    pub task_result_rx: Option<Receiver<Result<String, String>>>,
 }
 
 impl<'a> App<'a> {
@@ -143,6 +169,10 @@ impl<'a> App<'a> {
             editing: true,
             preview_scroll: 0,
             saved: false,
+            is_loading: false,
+            loading_message: None,
+            pending_ai_task: None,
+            task_result_rx: None,
         }
     }
 
@@ -296,7 +326,7 @@ impl<'a> App<'a> {
             ));
         }
 
-        let has_empty_fields = self.skill.context.is_empty() 
+        let has_empty_fields = self.skill.context.is_empty()
             || self.skill.inputs.is_empty()
             || self.skill.steps.is_empty()
             || self.skill.output.is_empty()
@@ -346,7 +376,7 @@ Enhanced skill:"#,
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let combined = format!("{}\n{}", stderr, stdout);
-        
+
         let enhanced = Self::extract_skill_from_output(&combined);
 
         if enhanced.trim().is_empty() {
@@ -394,7 +424,7 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         let combined = format!("{}\n{}", stderr, stdout);
-        
+
         let enhanced = Self::extract_skill_from_output(&combined);
 
         if enhanced.trim().is_empty() {
@@ -414,14 +444,14 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
 
         for line in lines {
             let trimmed = line.trim();
-            
+
             if trimmed.starts_with("## Skill:") {
                 if in_skill && !skill_lines.is_empty() {
                     break;
                 }
                 in_skill = true;
             }
-            
+
             if in_skill {
                 skill_lines.push(line);
             }
@@ -475,12 +505,21 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
                     }
                     "context" => {
                         if trimmed.starts_with('-') || trimmed.starts_with('*') {
-                            context.push(trimmed.trim_start_matches('-').trim_start_matches('*').trim().to_string());
+                            context.push(
+                                trimmed
+                                    .trim_start_matches('-')
+                                    .trim_start_matches('*')
+                                    .trim()
+                                    .to_string(),
+                            );
                         }
                     }
                     "inputs" => {
                         if trimmed.starts_with('-') || trimmed.starts_with('*') {
-                            let input_str = trimmed.trim_start_matches('-').trim_start_matches('*').trim();
+                            let input_str = trimmed
+                                .trim_start_matches('-')
+                                .trim_start_matches('*')
+                                .trim();
                             if let Some((n, d)) = input_str.split_once(':') {
                                 inputs.push(Input {
                                     name: n.trim().trim_matches('*').to_string(),
@@ -495,9 +534,13 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
                         }
                     }
                     "steps" => {
-                        if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) || trimmed.starts_with('-') {
+                        if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit())
+                            || trimmed.starts_with('-')
+                        {
                             let step = trimmed
-                                .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ')' || c == '-')
+                                .trim_start_matches(|c: char| {
+                                    c.is_ascii_digit() || c == '.' || c == ')' || c == '-'
+                                })
                                 .trim()
                                 .to_string();
                             if !step.is_empty() {
@@ -515,7 +558,13 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
                     }
                     "constraints" => {
                         if trimmed.starts_with('-') || trimmed.starts_with('*') {
-                            constraints.push(trimmed.trim_start_matches('-').trim_start_matches('*').trim().to_string());
+                            constraints.push(
+                                trimmed
+                                    .trim_start_matches('-')
+                                    .trim_start_matches('*')
+                                    .trim()
+                                    .to_string(),
+                            );
                         }
                     }
                     "tags" => {
@@ -549,8 +598,10 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
         let ta_name = TextArea::new(vec![self.skill.name.clone()]);
         let ta_desc = TextArea::new(vec![self.skill.description.clone()]);
         let ta_context = TextArea::new(self.skill.context.clone());
-        
-        let input_text: Vec<String> = self.skill.inputs
+
+        let input_text: Vec<String> = self
+            .skill
+            .inputs
             .iter()
             .map(|i| {
                 if i.description.is_empty() {
@@ -561,13 +612,22 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
             })
             .collect();
         let ta_inputs = TextArea::new(input_text);
-        
+
         let ta_steps = TextArea::new(self.skill.steps.clone());
         let ta_output = TextArea::new(vec![self.skill.output.clone()]);
         let ta_constraints = TextArea::new(self.skill.constraints.clone());
         let ta_tags = TextArea::new(vec![self.skill.tags.join(" ")]);
 
-        self.text_areas = vec![ta_name, ta_desc, ta_context, ta_inputs, ta_steps, ta_output, ta_constraints, ta_tags];
+        self.text_areas = vec![
+            ta_name,
+            ta_desc,
+            ta_context,
+            ta_inputs,
+            ta_steps,
+            ta_output,
+            ta_constraints,
+            ta_tags,
+        ];
     }
 
     /// Get progress percentage

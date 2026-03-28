@@ -3,8 +3,8 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Gauge, List, ListItem, Padding, Paragraph, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Wrap,
+        Block, Borders, Gauge, List, ListItem, Padding, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
     },
     Frame,
 };
@@ -12,13 +12,13 @@ use ratatui::{
 use crate::app::{App, FormSection};
 
 /// Color palette
-const PRIMARY: Color = Color::Rgb(99, 102, 241);    // Indigo
-const SECONDARY: Color = Color::Rgb(168, 85, 247);  // Purple
-const SUCCESS: Color = Color::Rgb(34, 197, 94);     // Green
-const WARNING: Color = Color::Rgb(234, 179, 8);     // Yellow
-const TEXT: Color = Color::Rgb(229, 231, 235);      // Light gray
-const TEXT_DIM: Color = Color::Rgb(107, 114, 128);  // Dim gray
-const BG_DARK: Color = Color::Rgb(17, 24, 39);      // Dark background
+const PRIMARY: Color = Color::Rgb(99, 102, 241); // Indigo
+const SECONDARY: Color = Color::Rgb(168, 85, 247); // Purple
+const SUCCESS: Color = Color::Rgb(34, 197, 94); // Green
+const WARNING: Color = Color::Rgb(234, 179, 8); // Yellow
+const TEXT: Color = Color::Rgb(229, 231, 235); // Light gray
+const TEXT_DIM: Color = Color::Rgb(107, 114, 128); // Dim gray
+const BG_DARK: Color = Color::Rgb(17, 24, 39); // Dark background
 
 /// Render the entire UI
 pub fn render(app: &mut App, frame: &mut Frame) {
@@ -28,10 +28,10 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Length(2),  // Progress bar
-            Constraint::Min(10),    // Content
-            Constraint::Length(3),  // Footer/help
+            Constraint::Length(3), // Header
+            Constraint::Length(2), // Progress bar
+            Constraint::Min(10),   // Content
+            Constraint::Length(3), // Footer/help
         ])
         .split(area);
 
@@ -39,6 +39,11 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     render_progress(app, frame, main_layout[1]);
     render_content(app, frame, main_layout[2]);
     render_footer(app, frame, main_layout[3]);
+
+    // Render loading overlay if AI is processing
+    if app.is_loading {
+        render_loading_overlay(app, frame, area);
+    }
 }
 
 /// Render the header with title
@@ -47,9 +52,7 @@ fn render_header(frame: &mut Frame, area: Rect) {
         Span::styled("🧠 ", Style::default()),
         Span::styled(
             "AI Skill Generator",
-            Style::default()
-                .fg(PRIMARY)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             " - Create reusable AI skills",
@@ -90,8 +93,8 @@ fn render_content(app: &mut App, frame: &mut Frame, area: Rect) {
     let content_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(25),  // Sidebar
-            Constraint::Min(40),     // Main content
+            Constraint::Length(25), // Sidebar
+            Constraint::Min(40),    // Main content
         ])
         .split(area);
 
@@ -148,8 +151,8 @@ fn render_main_content(app: &mut App, frame: &mut Frame, area: Rect) {
     let inner_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2),  // Help text
-            Constraint::Min(5),     // Input area
+            Constraint::Length(2), // Help text
+            Constraint::Min(5),    // Input area
         ])
         .margin(1)
         .split(area);
@@ -199,16 +202,12 @@ fn render_preview(app: &App, frame: &mut Frame, area: Rect) {
             if line.starts_with("## ") {
                 Line::from(Span::styled(
                     line,
-                    Style::default()
-                        .fg(PRIMARY)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD),
                 ))
             } else if line.starts_with("### ") {
                 Line::from(Span::styled(
                     line,
-                    Style::default()
-                        .fg(SECONDARY)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(SECONDARY).add_modifier(Modifier::BOLD),
                 ))
             } else if line.starts_with("- ") || line.starts_with("* ") {
                 Line::from(vec![
@@ -317,4 +316,58 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         );
 
     frame.render_widget(footer, area);
+}
+
+/// Render loading overlay with spinner
+fn render_loading_overlay(app: &App, frame: &mut Frame, area: Rect) {
+    // Calculate center of area
+    let popup_width = 40;
+    let popup_height = 5;
+    let x = (area.width.saturating_sub(popup_width)) / 2;
+    let y = (area.height.saturating_sub(popup_height)) / 2;
+
+    let popup_area = Rect::new(
+        x.saturating_add(area.x),
+        y.saturating_add(area.y),
+        popup_width,
+        popup_height,
+    );
+
+    // Animated spinner
+    let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let frame_idx = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        / 100) as usize
+        % spinner_frames.len();
+
+    let spinner = spinner_frames[frame_idx];
+    let message = app
+        .loading_message
+        .clone()
+        .unwrap_or_else(|| "Loading...".to_string());
+
+    let loading_text = Paragraph::new(vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(
+                spinner,
+                Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  ", Style::default()),
+            Span::styled(&message, Style::default().fg(TEXT)),
+        ]),
+    ])
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .title(" Processing ")
+            .title_style(Style::default().fg(PRIMARY).add_modifier(Modifier::BOLD))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(PRIMARY))
+            .bg(BG_DARK),
+    );
+
+    frame.render_widget(loading_text, popup_area);
 }
