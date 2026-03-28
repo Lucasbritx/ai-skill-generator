@@ -463,7 +463,7 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
     /// Parse enhanced skill from AI response
     pub fn parse_enhanced_skill(&mut self, enhanced: &str) {
         let lines: Vec<&str> = enhanced.lines().collect();
-        let mut current_section = None;
+        let mut current_section: Option<&str> = None;
         let mut name = String::new();
         let mut description = String::new();
         let mut context = Vec::new();
@@ -473,30 +473,71 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
         let mut constraints = Vec::new();
         let mut tags = Vec::new();
 
-        for line in &lines {
+        let mut i = 0;
+        while i < lines.len() {
+            let line = lines[i];
             let trimmed = line.trim();
+
+            // Check for section headers
             if trimmed.starts_with("## Skill:") {
                 name = trimmed.trim_start_matches("## Skill:").trim().to_string();
-            } else if trimmed == "### Description" {
-                current_section = Some("description");
-            } else if trimmed == "### Context" {
-                current_section = Some("context");
-            } else if trimmed == "### Inputs" {
-                current_section = Some("inputs");
-            } else if trimmed == "### Steps" {
-                current_section = Some("steps");
-            } else if trimmed == "### Output" {
-                current_section = Some("output");
-            } else if trimmed == "### Constraints" {
-                current_section = Some("constraints");
-            } else if trimmed == "### Tags" {
-                current_section = Some("tags");
-            } else if trimmed.starts_with("### ") {
                 current_section = None;
-            } else if let Some(section) = current_section {
+                i += 1;
+                continue;
+            }
+
+            // Match section headers
+            match trimmed {
+                "### Description" => {
+                    current_section = Some("description");
+                    i += 1;
+                    continue;
+                }
+                "### Context" => {
+                    current_section = Some("context");
+                    i += 1;
+                    continue;
+                }
+                "### Inputs" => {
+                    current_section = Some("inputs");
+                    i += 1;
+                    continue;
+                }
+                "### Steps" => {
+                    current_section = Some("steps");
+                    i += 1;
+                    continue;
+                }
+                "### Output" => {
+                    current_section = Some("output");
+                    i += 1;
+                    continue;
+                }
+                "### Constraints" => {
+                    current_section = Some("constraints");
+                    i += 1;
+                    continue;
+                }
+                "### Tags" => {
+                    current_section = Some("tags");
+                    i += 1;
+                    continue;
+                }
+                _ if trimmed.starts_with("### ") => {
+                    // Any other section header
+                    current_section = None;
+                    i += 1;
+                    continue;
+                }
+                _ => {}
+            }
+
+            // Process content based on current section
+            if let Some(section) = current_section {
                 match section {
                     "description" => {
-                        if !trimmed.is_empty() {
+                        // Collect all non-empty lines until next section
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
                             if !description.is_empty() {
                                 description.push('\n');
                             }
@@ -504,52 +545,74 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
                         }
                     }
                     "context" => {
-                        if trimmed.starts_with('-') || trimmed.starts_with('*') {
-                            context.push(
-                                trimmed
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
+                            if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                                let item = trimmed
                                     .trim_start_matches('-')
                                     .trim_start_matches('*')
                                     .trim()
-                                    .to_string(),
-                            );
+                                    .to_string();
+                                if !item.is_empty() {
+                                    context.push(item);
+                                }
+                            }
                         }
                     }
                     "inputs" => {
-                        if trimmed.starts_with('-') || trimmed.starts_with('*') {
-                            let input_str = trimmed
-                                .trim_start_matches('-')
-                                .trim_start_matches('*')
-                                .trim();
-                            if let Some((n, d)) = input_str.split_once(':') {
-                                inputs.push(Input {
-                                    name: n.trim().trim_matches('*').to_string(),
-                                    description: d.trim().to_string(),
-                                });
-                            } else {
-                                inputs.push(Input {
-                                    name: input_str.trim_matches('*').to_string(),
-                                    description: String::new(),
-                                });
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
+                            if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                                let input_line = trimmed
+                                    .trim_start_matches('-')
+                                    .trim_start_matches('*')
+                                    .trim();
+
+                                // Remove bold markers ** if present
+                                let input_line = input_line.trim_matches('*');
+
+                                if let Some((name_part, desc_part)) = input_line.split_once(':') {
+                                    inputs.push(Input {
+                                        name: name_part.trim().trim_matches('*').to_string(),
+                                        description: desc_part.trim().to_string(),
+                                    });
+                                } else if !input_line.is_empty() {
+                                    inputs.push(Input {
+                                        name: input_line.to_string(),
+                                        description: String::new(),
+                                    });
+                                }
                             }
                         }
                     }
                     "steps" => {
-                        if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit())
-                            || trimmed.starts_with('-')
-                        {
-                            let step = trimmed
-                                .trim_start_matches(|c: char| {
-                                    c.is_ascii_digit() || c == '.' || c == ')' || c == '-'
-                                })
-                                .trim()
-                                .to_string();
-                            if !step.is_empty() {
-                                steps.push(step);
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
+                            // Handle both "1. step" and "- step" formats
+                            let step_text =
+                                if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                                    // Numbered format: "1. text" or "1) text"
+                                    trimmed
+                                        .trim_start_matches(|c: char| c.is_ascii_digit())
+                                        .trim_start_matches('.')
+                                        .trim_start_matches(')')
+                                        .trim()
+                                        .to_string()
+                                } else if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                                    // Bullet format: "- text" or "* text"
+                                    trimmed
+                                        .trim_start_matches('-')
+                                        .trim_start_matches('*')
+                                        .trim()
+                                        .to_string()
+                                } else {
+                                    trimmed.to_string()
+                                };
+
+                            if !step_text.is_empty() {
+                                steps.push(step_text);
                             }
                         }
                     }
                     "output" => {
-                        if !trimmed.is_empty() {
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
                             if !output.is_empty() {
                                 output.push('\n');
                             }
@@ -557,27 +620,35 @@ Output ONLY the completed skill in exact same Markdown format. Do NOT ask questi
                         }
                     }
                     "constraints" => {
-                        if trimmed.starts_with('-') || trimmed.starts_with('*') {
-                            constraints.push(
-                                trimmed
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
+                            if trimmed.starts_with('-') || trimmed.starts_with('*') {
+                                let item = trimmed
                                     .trim_start_matches('-')
                                     .trim_start_matches('*')
                                     .trim()
-                                    .to_string(),
-                            );
+                                    .to_string();
+                                if !item.is_empty() {
+                                    constraints.push(item);
+                                }
+                            }
                         }
                     }
                     "tags" => {
-                        for tag in trimmed.split_whitespace() {
-                            let tag = tag.trim_start_matches('#');
-                            if !tag.is_empty() {
-                                tags.push(tag.to_string());
+                        if !trimmed.is_empty() && !trimmed.starts_with("### ") {
+                            // Split by whitespace or comma
+                            for tag_str in trimmed.split(|c: char| c.is_whitespace() || c == ',') {
+                                let tag = tag_str.trim().trim_start_matches('#').trim_matches('*');
+                                if !tag.is_empty() {
+                                    tags.push(tag.to_string());
+                                }
                             }
                         }
                     }
                     _ => {}
                 }
             }
+
+            i += 1;
         }
 
         self.skill.name = name;
@@ -730,5 +801,110 @@ Second skill content"#;
         let skill = App::extract_skill_from_output(output);
         assert!(skill.contains("First skill content"));
         assert!(!skill.contains("Second skill content"));
+    }
+
+    #[test]
+    fn test_parse_enhanced_skill_complete() {
+        let mut app = App::new();
+        let skill_markdown = r#"## Skill: database-optimizer
+
+### Description
+
+Optimizes database queries and performance by analyzing execution plans and suggesting improvements.
+
+### Context
+
+- SQL databases
+- Query optimization
+- Database performance tuning
+
+### Inputs
+
+- **query**: The SQL query to optimize
+- **database_type**: The type of database (PostgreSQL, MySQL, etc.)
+- **current_performance**: Current query execution metrics
+
+### Steps
+
+1. Analyze the provided SQL query for inefficiencies
+2. Check for missing indexes or poor join operations
+3. Identify bottlenecks in the execution plan
+4. Suggest optimized query alternatives
+5. Recommend indexing strategies
+
+### Output
+
+Optimized query with explanations of changes and performance improvements.
+
+### Constraints
+
+- Must preserve original query functionality
+- Optimization must be compatible with the database version
+
+### Tags
+
+#optimization #database #sql #performance"#;
+
+        app.parse_enhanced_skill(skill_markdown);
+
+        assert_eq!(app.skill.name, "database-optimizer");
+        assert!(app.skill.description.contains("Optimizes database queries"));
+        assert_eq!(app.skill.context.len(), 3);
+        assert!(app.skill.context.contains(&"SQL databases".to_string()));
+        assert_eq!(app.skill.inputs.len(), 3);
+        assert_eq!(app.skill.inputs[0].name, "query");
+        assert!(app.skill.inputs[0].description.contains("SQL query"));
+        assert_eq!(app.skill.steps.len(), 5);
+        assert!(app.skill.steps[0].contains("Analyze"));
+        assert!(app.skill.output.contains("Optimized query"));
+        assert_eq!(app.skill.constraints.len(), 2);
+        assert_eq!(app.skill.tags.len(), 4);
+        assert!(app.skill.tags.contains(&"optimization".to_string()));
+    }
+
+    #[test]
+    fn test_parse_enhanced_skill_with_minimal_input() {
+        let mut app = App::new();
+        let skill_markdown = r#"## Skill: test-skill
+
+### Description
+
+A test skill description.
+
+### Context
+
+- Context 1
+
+### Inputs
+
+- **input1**: Description of input
+
+### Steps
+
+1. Step 1
+2. Step 2
+
+### Output
+
+Test output
+
+### Constraints
+
+- Constraint 1
+
+### Tags
+
+#test #skill"#;
+
+        app.parse_enhanced_skill(skill_markdown);
+
+        assert_eq!(app.skill.name, "test-skill");
+        assert!(!app.skill.description.is_empty());
+        assert!(!app.skill.context.is_empty());
+        assert!(!app.skill.inputs.is_empty());
+        assert!(!app.skill.steps.is_empty());
+        assert!(!app.skill.output.is_empty());
+        assert!(!app.skill.constraints.is_empty());
+        assert!(!app.skill.tags.is_empty());
     }
 }
