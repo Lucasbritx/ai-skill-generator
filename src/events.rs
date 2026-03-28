@@ -42,12 +42,25 @@ fn handle_key_event(app: &mut App, key: KeyEvent) -> color_eyre::Result<()> {
             }
             return Ok(());
         }
-        // AI Enhancement
+        // AI Enhancement (improve existing)
         KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             match app.enhance_with_ai() {
                 Ok(enhanced) => {
                     app.parse_enhanced_skill(&enhanced);
                     app.status_message = Some("✨ Skill enhanced with AI!".to_string());
+                }
+                Err(e) => {
+                    app.status_message = Some(format!("AI Error: {}", e));
+                }
+            }
+            return Ok(());
+        }
+        // AI Fill (fill empty fields)
+        KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            match app.fill_empty_fields() {
+                Ok(enhanced) => {
+                    app.parse_enhanced_skill(&enhanced);
+                    app.status_message = Some("✨ Empty fields filled!".to_string());
                 }
                 Err(e) => {
                     app.status_message = Some(format!("AI Error: {}", e));

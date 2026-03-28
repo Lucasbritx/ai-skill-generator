@@ -266,6 +266,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             ("←/Tab", "Back"),
             ("Ctrl+S", "Save"),
             ("Ctrl+E", "AI Enhance"),
+            ("Ctrl+F", "AI Fill Empty"),
             ("q/Esc", "Quit"),
         ]
     } else {
@@ -275,6 +276,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             ("Enter", "New line"),
             ("Ctrl+S", "Save"),
             ("Ctrl+E", "AI Enhance"),
+            ("Ctrl+F", "AI Fill Empty"),
             ("Esc", "Quit"),
         ]
     };

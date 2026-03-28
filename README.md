@@ -49,6 +49,8 @@ cargo run --release
 | `Enter` | New line (in text areas) |
 | `↑` / `↓` | Scroll (in preview) |
 | `Ctrl+S` | Save skill to file |
+| `Ctrl+E` | Enhance with AI (improve existing) |
+| `Ctrl+F` | Fill empty fields with AI |
 | `Esc` / `q` | Quit |
 
 ### Sections
@@ -137,6 +139,11 @@ Creating a skill for generating React forms:
 8. **Tags**: `react forms validation typescript`
 
 Press `Ctrl+S` to save as `react-form-generator.md`
+
+### AI Features
+
+- **Ctrl+E**: Enhance with AI - improves existing fields
+- **Ctrl+F**: Fill empty fields - fills missing fields based on existing data
 
 ## License
 

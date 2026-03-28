@@ -290,14 +290,36 @@ impl<'a> App<'a> {
     pub fn enhance_with_ai(&mut self) -> color_eyre::Result<String> {
         self.sync_skill_from_textarea();
 
-        if !self.skill.is_valid() {
+        if self.skill.name.is_empty() && self.skill.description.is_empty() {
             return Err(color_eyre::eyre::eyre!(
-                "Skill must have at least a name and description"
+                "Skill must have at least a name or description"
             ));
         }
 
-        let prompt = format!(
-            r#"You are an AI skill enhancement engine. Enhance the following skill by improving clarity, adding missing details, making steps more actionable, and ensuring best practices for LLM-based systems.
+        let has_empty_fields = self.skill.context.is_empty() 
+            || self.skill.inputs.is_empty()
+            || self.skill.steps.is_empty()
+            || self.skill.output.is_empty()
+            || self.skill.constraints.is_empty()
+            || self.skill.tags.is_empty();
+
+        let prompt = if has_empty_fields {
+            format!(
+                r#"You are an AI skill enhancement engine. Enhance and complete the following skill by:
+1. Improving clarity and descriptions where they exist
+2. Adding missing details for empty fields (context, inputs, steps, output, constraints, tags)
+3. Making steps more actionable
+4. Ensuring best practices for LLM-based systems
+
+Current skill (some fields may be empty - FILL THEM IN based on the name/description):
+{}
+
+Output ONLY the enhanced skill in exact same Markdown format. Do NOT ask questions. Do NOT include explanations. Just output the complete enhanced skill with ALL fields populated."#,
+                self.skill.to_markdown()
+            )
+        } else {
+            format!(
+                r#"You are an AI skill enhancement engine. Enhance the following skill by improving clarity, adding missing details, making steps more actionable, and ensuring best practices for LLM-based systems.
 
 Output ONLY the enhanced skill in exact same Markdown format. Do NOT ask questions. Do NOT include explanations. Just output the enhanced skill.
 
@@ -308,8 +330,9 @@ Output ONLY the enhanced skill in exact same Markdown format. Do NOT ask questio
 ---
 
 Enhanced skill:"#,
-            self.skill.to_markdown()
-        );
+                self.skill.to_markdown()
+            )
+        };
 
         self.status_message = Some("🤖 Enhancing with AI...".to_string());
 
@@ -331,6 +354,54 @@ Enhanced skill:"#,
         }
 
         self.status_message = Some("✨ Skill enhanced!".to_string());
+
+        Ok(enhanced.to_string())
+    }
+
+    /// Fill empty fields using OpenCode AI CLI
+    pub fn fill_empty_fields(&mut self) -> color_eyre::Result<String> {
+        self.sync_skill_from_textarea();
+
+        if self.skill.name.is_empty() && self.skill.description.is_empty() {
+            return Err(color_eyre::eyre::eyre!(
+                "Skill must have at least a name or description"
+            ));
+        }
+
+        let prompt = format!(
+            r#"You are an AI skill completion engine. The user has provided a partial skill with some fields empty.
+
+Based ONLY on the provided fields (name, description, context, inputs, steps, output, constraints, tags), fill in the missing/empty fields. 
+
+Do NOT make up technologies or details that aren't implied by the existing fields. Keep it simple and accurate.
+
+Current skill (fields with "N/A" or that are empty need to be filled):
+{}
+
+Output ONLY the completed skill in exact same Markdown format. Do NOT ask questions. Do NOT include explanations. Just output the skill with empty fields filled in."#,
+            self.skill.to_markdown()
+        );
+
+        self.status_message = Some("🤖 Filling empty fields...".to_string());
+
+        let output = std::process::Command::new("/Users/lucasxavier/.opencode/bin/opencode")
+            .arg("run")
+            .arg("--thinking")
+            .arg(&prompt)
+            .output()?;
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let combined = format!("{}\n{}", stderr, stdout);
+        
+        let enhanced = Self::extract_skill_from_output(&combined);
+
+        if enhanced.trim().is_empty() {
+            return Err(color_eyre::eyre::eyre!("No response from AI"));
+        }
+
+        self.status_message = Some("✨ Empty fields filled!".to_string());
 
         Ok(enhanced.to_string())
     }
