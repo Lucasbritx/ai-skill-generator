@@ -907,4 +907,66 @@ Test output
         assert!(!app.skill.constraints.is_empty());
         assert!(!app.skill.tags.is_empty());
     }
+
+    #[test]
+    fn test_parse_fill_empty_fields_preserves_name() {
+        let mut app = App::new();
+        // This is what AI should return after filling empty fields for "qa-senior-playwright"
+        let skill_markdown = r#"## Skill: qa-senior-playwright
+
+### Description
+
+A comprehensive skill for senior QA engineers using Playwright to develop, maintain and execute automated test suites.
+
+### Context
+
+- Playwright
+- JavaScript/TypeScript
+- CI/CD pipelines
+
+### Inputs
+
+- **test-file-path**: Path to the test files
+- **environment**: The environment to test against
+
+### Steps
+
+1. Set up the Playwright environment
+2. Create test cases using Playwright selectors
+3. Run tests in parallel across browsers
+4. Generate HTML reports
+5. Integrate with CI/CD pipeline
+
+### Output
+
+HTML test report with pass/fail results and screenshots
+
+### Constraints
+
+- Tests must be deterministic and independent
+- Timeout must be set appropriately for slow networks
+- Browser compatibility must be tested
+
+### Tags
+
+#qa #playwright #automation #testing"#;
+
+        app.parse_enhanced_skill(skill_markdown);
+
+        // CRITICAL: Verify the name is preserved exactly
+        assert_eq!(
+            app.skill.name, "qa-senior-playwright",
+            "Skill name must be preserved"
+        );
+        assert_eq!(app.skill.description, "A comprehensive skill for senior QA engineers using Playwright to develop, maintain and execute automated test suites.", "Description must be filled");
+        assert!(app.skill.context.len() > 0, "Context must be filled");
+        assert!(app.skill.inputs.len() > 0, "Inputs must be filled");
+        assert!(app.skill.steps.len() > 0, "Steps must be filled");
+        assert!(!app.skill.output.is_empty(), "Output must be filled");
+        assert!(
+            app.skill.constraints.len() > 0,
+            "Constraints must be filled"
+        );
+        assert!(app.skill.tags.len() > 0, "Tags must be filled");
+    }
 }

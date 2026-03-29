@@ -32,7 +32,7 @@ impl Skill {
             .join("-")
     }
 
-    /// Generate Markdown representation of the skill
+    /// Generate Markdown representation of the skill (normal, hiding empty sections)
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
 
@@ -121,6 +121,114 @@ impl Skill {
             md.push_str(&tags.join(" "));
             md.push('\n');
         }
+
+        md
+    }
+
+    /// Generate Markdown representation with ALL sections included (for AI filling)
+    /// This ensures AI knows which fields need to be filled
+    pub fn to_markdown_with_empty_sections(&self) -> String {
+        let mut md = String::new();
+
+        // Skill name header
+        let skill_name = if self.name.is_empty() {
+            "untitled-skill".to_string()
+        } else {
+            self.kebab_case_name()
+        };
+        md.push_str(&format!("## Skill: {}\n\n", skill_name));
+
+        // Description (always included)
+        md.push_str("### Description\n\n");
+        if !self.description.is_empty() {
+            md.push_str(&self.description);
+        } else {
+            md.push_str("[To be filled]");
+        }
+        md.push_str("\n\n");
+
+        // Context (always included)
+        md.push_str("### Context\n\n");
+        if !self.context.is_empty() && self.context.iter().any(|c| !c.is_empty()) {
+            for ctx in &self.context {
+                if !ctx.is_empty() {
+                    md.push_str(&format!("- {}\n", ctx));
+                }
+            }
+        } else {
+            md.push_str("- [To be filled]\n");
+        }
+        md.push('\n');
+
+        // Inputs (always included)
+        md.push_str("### Inputs\n\n");
+        if !self.inputs.is_empty() && self.inputs.iter().any(|i| !i.name.is_empty()) {
+            for input in &self.inputs {
+                if !input.name.is_empty() {
+                    if input.description.is_empty() {
+                        md.push_str(&format!("- **{}**\n", input.name));
+                    } else {
+                        md.push_str(&format!("- **{}**: {}\n", input.name, input.description));
+                    }
+                }
+            }
+        } else {
+            md.push_str("- **[To be filled]**: [To be filled]\n");
+        }
+        md.push('\n');
+
+        // Steps (always included)
+        md.push_str("### Steps\n\n");
+        if !self.steps.is_empty() && self.steps.iter().any(|s| !s.is_empty()) {
+            for (i, step) in self.steps.iter().enumerate() {
+                if !step.is_empty() {
+                    md.push_str(&format!("{}. {}\n", i + 1, step));
+                }
+            }
+        } else {
+            md.push_str("1. [To be filled]\n");
+        }
+        md.push('\n');
+
+        // Output (always included)
+        md.push_str("### Output\n\n");
+        if !self.output.is_empty() {
+            md.push_str(&self.output);
+        } else {
+            md.push_str("[To be filled]");
+        }
+        md.push_str("\n\n");
+
+        // Constraints (always included)
+        md.push_str("### Constraints\n\n");
+        if !self.constraints.is_empty() && self.constraints.iter().any(|c| !c.is_empty()) {
+            for constraint in &self.constraints {
+                if !constraint.is_empty() {
+                    md.push_str(&format!("- {}\n", constraint));
+                }
+            }
+        } else {
+            md.push_str("- [To be filled]\n");
+        }
+        md.push('\n');
+
+        // Tags (always included)
+        md.push_str("### Tags\n\n");
+        if !self.tags.is_empty() && self.tags.iter().any(|t| !t.is_empty()) {
+            let tags: Vec<String> = self
+                .tags
+                .iter()
+                .filter(|t| !t.is_empty())
+                .map(|t| {
+                    let tag = t.trim_start_matches('#');
+                    format!("#{}", tag)
+                })
+                .collect();
+            md.push_str(&tags.join(" "));
+        } else {
+            md.push_str("#[to-be-filled]");
+        }
+        md.push('\n');
 
         md
     }
@@ -245,5 +353,60 @@ mod tests {
     fn test_is_valid_both_empty() {
         let skill: Skill = Skill::default();
         assert!(!skill.is_valid());
+    }
+
+    #[test]
+    fn test_to_markdown_with_empty_sections_includes_all_fields() {
+        let skill = Skill {
+            name: "super-senior-qa-playwright".to_string(),
+            description: String::new(),
+            context: vec![],
+            inputs: vec![],
+            steps: vec![],
+            output: String::new(),
+            constraints: vec![],
+            tags: vec![],
+        };
+
+        let md = skill.to_markdown_with_empty_sections();
+
+        // Should include skill name
+        assert!(md.contains("## Skill: super-senior-qa-playwright"));
+
+        // Should include ALL section headers
+        assert!(md.contains("### Description"));
+        assert!(md.contains("### Context"));
+        assert!(md.contains("### Inputs"));
+        assert!(md.contains("### Steps"));
+        assert!(md.contains("### Output"));
+        assert!(md.contains("### Constraints"));
+        assert!(md.contains("### Tags"));
+
+        // Should include placeholders for empty fields
+        assert!(md.contains("[To be filled]"));
+    }
+
+    #[test]
+    fn test_to_markdown_with_empty_sections_preserves_existing() {
+        let skill = Skill {
+            name: "test-skill".to_string(),
+            description: "A test description".to_string(),
+            context: vec!["Rust".to_string()],
+            inputs: vec![],
+            steps: vec![],
+            output: String::new(),
+            constraints: vec![],
+            tags: vec![],
+        };
+
+        let md = skill.to_markdown_with_empty_sections();
+
+        // Should preserve existing content
+        assert!(md.contains("A test description"));
+        assert!(md.contains("- Rust"));
+
+        // Should still include placeholder for empty Inputs
+        assert!(md.contains("### Inputs"));
+        assert!(md.contains("[To be filled]"));
     }
 }
